@@ -1,8 +1,18 @@
 #! /usr/bin/env python3
 """A steganography example using PNG."""
 import binascii
-import struct
+from struct import pack, unpack
 import sys
+
+
+# A friendly name and channel count for each color type
+IMAGE_COLOR_TYPES = {
+    0: ('grayscale', 1),
+    2: ('rgb/truecolor', 3),
+    3: ('indexed', 1),
+    4: ('grayscale+alpha', 2),
+    6: ('rgb+alpha', 4),
+}
 
 
 class NotAPNGError(Exception):
@@ -15,6 +25,10 @@ class InvalidChunkLength(Exception):
 
 class ProcessingError(Exception):
     """Raised when a chunk being processed has an unexpected CRC."""
+
+
+class UnsupportedColorType(Exception):
+    """Raised if we see a color type we don't know how to manipulate."""
 
 
 class PNGChunk:
@@ -39,17 +53,20 @@ class PNGChunk:
             raise InvalidChunkLength(
                 'Length is represented by 4 bytes, so max {}'.format(2**32))
 
-        return struct.pack('>I', length)
+        return pack('>I', length)
 
     @property
     def crc(self):
         """Provide the CRC of the given chunk."""
-        return struct.pack('>I', binascii.crc32(self.chunk_type + self.data))
+        return pack('>I', binascii.crc32(self.chunk_type + self.data))
 
     @property
     def critical(self):
         """Determine if this is a critical PNG chunk."""
         return self.chunk_type in ['IHDR', 'PLTE', 'IDAT', 'IEND']
+
+    def __getitem__(self, idx):
+        return self.data[idx]
 
     def __repr__(self):
         return str(self.length + self.chunk_type + self.data + self.crc)
@@ -68,11 +85,13 @@ def process_image_data(image_data):
     image = {
         'header': png_header,
         'chunks': [],
+        'color_type': None,
+        'bit_depth': None,
     }
 
     remaining_data = image_data[len(png_header):]
     while remaining_data:
-        length = struct.unpack('>I', remaining_data[:4])[0]
+        length = unpack('>I', remaining_data[:4])[0]
         chunk_type = remaining_data[4:8]
         chunk_data = remaining_data[8:8+length]
         chunk_crc = remaining_data[8+length:12+length]
@@ -89,6 +108,23 @@ def process_image_data(image_data):
         image['chunks'].append(chunk)
         remaining_data = remaining_data[12+length:]
 
+    image_color_type = ''
+    # By specification, IHDR must be the first chunk. If it's not, we'll crash
+    ihdr = image['chunks'][0]
+    color_type, channels = IMAGE_COLOR_TYPES[unpack('b', ihdr[9:10])[0]]
+    bit_depth = unpack('b', ihdr[8:9])[0]
+
+    image['color_type'] = color_type
+    image['bit_depth'] = bit_depth
+    image['channels'] = channels
+
+    if color_type != 'rgb+alpha':
+        raise UnsupportedColorType(
+            '{} is not currently a supported color type'.format(
+                image_color_type
+            )
+        )
+
     return image
 
 
@@ -101,9 +137,9 @@ def main():
         data = image_handle.read()
     img = process_image_data(data)
 
-    print(img)
     for chunk in img['chunks']:
-        print(chunk.chunk_type)
+        if chunk.chunk_type == b'IDAT':
+            print(chunk.data)
 
 
 if __name__ == '__main__':
