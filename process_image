@@ -1,8 +1,8 @@
 #! /usr/bin/env python3
 """A steganography example using PNG."""
-import binascii
 from struct import pack, unpack
 import sys
+import zlib
 
 
 # A friendly name and channel count for each color type
@@ -58,7 +58,7 @@ class PNGChunk:
     @property
     def crc(self):
         """Provide the CRC of the given chunk."""
-        return pack('>I', binascii.crc32(self.chunk_type + self.data))
+        return pack('>I', zlib.crc32(self.chunk_type + self.data))
 
     @property
     def critical(self):
@@ -87,6 +87,9 @@ def process_image_data(image_data):
         'chunks': [],
         'color_type': None,
         'bit_depth': None,
+        'channels': None,
+        'width': None,
+        'height': None,
     }
 
     remaining_data = image_data[len(png_header):]
@@ -112,11 +115,12 @@ def process_image_data(image_data):
     # By specification, IHDR must be the first chunk. If it's not, we'll crash
     ihdr = image['chunks'][0]
     color_type, channels = IMAGE_COLOR_TYPES[unpack('b', ihdr[9:10])[0]]
-    bit_depth = unpack('b', ihdr[8:9])[0]
 
     image['color_type'] = color_type
-    image['bit_depth'] = bit_depth
+    image['bit_depth'] = unpack('b', ihdr[8:9])[0]
     image['channels'] = channels
+    image['width'] = unpack('>I', ihdr[0:4])[0]
+    image['height'] = unpack('>I', ihdr[4:8])[0]
 
     if color_type != 'rgb+alpha':
         raise UnsupportedColorType(
@@ -137,9 +141,20 @@ def main():
         data = image_handle.read()
     img = process_image_data(data)
 
+    pixel_length = img['channels'] * img['bit_depth']
+
+    print('Width {width} x Height {height} = {pixel_count}'.format(
+        width=img['width'],
+        height=img['height'],
+        pixel_count=img['width']*img['height'],
+    ))
+
     for chunk in img['chunks']:
         if chunk.chunk_type == b'IDAT':
-            print(chunk.data)
+            decompressed = zlib.decompress(chunk.data)
+            print(len(decompressed) / pixel_length)
+    print('Values are currently off because the filtering step is not '
+          'implemented.')
 
 
 if __name__ == '__main__':
