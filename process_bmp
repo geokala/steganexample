@@ -1,0 +1,52 @@
+#! /usr/bin/env python3
+"""A steganography example using BMP (bitmap)."""
+from struct import unpack
+
+
+class UnsupportedFormat(Exception):
+    """Raised if we don't see the expected files structure."""
+
+
+class Bitmap:
+    """Class to load and store a bitmap."""
+    def __init__(self, data):
+        self.data = data
+
+        if data[0:2] != b'BM':
+            raise UnsupportedFormat(
+                'Header was expected to start with BM, but started with {}. '
+                'This is not a supported bitmap.'.format(
+                    data[0:2].decode('utf-8')
+                ),
+            )
+
+        self.file_size = unpack('>I', data[2:6])[0]
+
+        # Four bytes that depend on the creating application
+        self.application_data = data[6:10]
+
+        self.first_image_byte = unpack('b', data[10:11])[0]
+
+        self.dib_header = data[11:self.first_image_byte]
+
+        self.image_data = data[self.first_image_byte:]
+
+
+def main():
+    """Determine what steganographic operations were requested by the user and
+    perform them.
+    """
+    with open('cc.bmp', 'rb') as image_handle:
+        image_data = image_handle.read()
+
+    bitmap = Bitmap(image_data)
+
+    expected_pixel_count = 64*64
+    print(expected_pixel_count)
+
+    # Showing the expected 4 bytes per pixel - alpha, red, green, blue
+    print(len(bitmap.image_data) / expected_pixel_count)
+
+
+if __name__ == '__main__':
+    main()
