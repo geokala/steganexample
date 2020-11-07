@@ -3,3 +3,6 @@ Exported as bmp using GNU Image Manipulation Program.
 
 PNG file format details obtained from https://en.wikipedia.org/wiki/Portable_Network_Graphics
 BMP file format details obtained from https://en.wikipedia.org/wiki/BMP_file_format
+
+Note that PNG is only partially implemented as the complexity probably doesn't lend it towards a starting example quite so much as a bitmap does.
+Other formats are of course feasible- anything lossless should be relatively straight-forward, but anything with lossy compression would be... interesting (though maybe not impossible).
