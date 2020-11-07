@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 """A steganography example using PNG."""
 import binascii
+import struct
 import sys
 
 
@@ -12,18 +13,15 @@ class InvalidChunkLength(Exception):
     """Raised if an invalid chunk length is provided."""
 
 
+class ProcessingError(Exception):
+    """Raised when a chunk being processed has an unexpected CRC."""
+
+
 class PNGChunk:
     """A chunk of a PNG image."""
-    def __init__(self, length, chunk_type, data=None):
-        self.length = int(length)
+    def __init__(self, chunk_type, data=None):
         self.chunk_type = chunk_type
-        self.data = data or ''
-
-        if self.length > 2**32:
-            raise InvalidChunkLength(
-                'Length is represented by 4 bytes, so max {}'.format(2**32))
-        if self.length < 0:
-            raise InvalidChunkLength('Chunk length must be >=0.')
+        self.data = data or b''
 
         # Technically, we should determine whether it is safe to copy other
         # chunks based on the fourth character of the chunk_type being lower
@@ -32,14 +30,29 @@ class PNGChunk:
         # For the moment, though, we will ignore that.
 
     @property
+    def length(self):
+        """Provide the length of the chunk, in the way it'll need to be
+        represented in the file.
+        """
+        length = len(self.data)
+        if length > 2**32:
+            raise InvalidChunkLength(
+                'Length is represented by 4 bytes, so max {}'.format(2**32))
+
+        return struct.pack('>I', length)
+
+    @property
     def crc(self):
         """Provide the CRC of the given chunk."""
-        binascii.crc32(self.chunk_type + self.data)
+        return struct.pack('>I', binascii.crc32(self.chunk_type + self.data))
 
     @property
     def critical(self):
         """Determine if this is a critical PNG chunk."""
         return self.chunk_type in ['IHDR', 'PLTE', 'IDAT', 'IEND']
+
+    def __repr__(self):
+        return str(self.length + self.chunk_type + self.data + self.crc)
 
 
 def process_image_data(image_data):
@@ -57,6 +70,25 @@ def process_image_data(image_data):
         'chunks': [],
     }
 
+    remaining_data = image_data[len(png_header):]
+    while remaining_data:
+        length = struct.unpack('>I', remaining_data[:4])[0]
+        chunk_type = remaining_data[4:8]
+        chunk_data = remaining_data[8:8+length]
+        chunk_crc = remaining_data[8+length:12+length]
+        chunk = PNGChunk(chunk_type, chunk_data)
+        if chunk.crc != chunk_crc:
+            raise ProcessingError(
+                'CRCs do not match. Found {found}, expected {expected}. '
+                'Chunk data: {data}'.format(
+                    found=chunk_crc,
+                    expected=chunk.crc,
+                    data=str(chunk),
+                )
+            )
+        image['chunks'].append(chunk)
+        remaining_data = remaining_data[12+length:]
+
     return image
 
 
@@ -68,7 +100,10 @@ def main():
     with open(sys.argv[1], 'rb') as image_handle:
         data = image_handle.read()
     img = process_image_data(data)
+
     print(img)
+    for chunk in img['chunks']:
+        print(chunk.chunk_type)
 
 
 if __name__ == '__main__':
