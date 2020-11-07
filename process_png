@@ -1,5 +1,5 @@
 #! /usr/bin/env python3
-"""A steganography example using PNG."""
+"""A steganography example using PNG. (WIP, not functional yet)"""
 from struct import pack, unpack
 import sys
 import zlib
