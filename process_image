@@ -1,0 +1,75 @@
+#! /usr/bin/env python3
+"""A steganography example using PNG."""
+import binascii
+import sys
+
+
+class NotAPNGError(Exception):
+    """Raised if the provided data is not a PNG."""
+
+
+class InvalidChunkLength(Exception):
+    """Raised if an invalid chunk length is provided."""
+
+
+class PNGChunk:
+    """A chunk of a PNG image."""
+    def __init__(self, length, chunk_type, data=None):
+        self.length = int(length)
+        self.chunk_type = chunk_type
+        self.data = data or ''
+
+        if self.length > 2**32:
+            raise InvalidChunkLength(
+                'Length is represented by 4 bytes, so max {}'.format(2**32))
+        if self.length < 0:
+            raise InvalidChunkLength('Chunk length must be >=0.')
+
+        # Technically, we should determine whether it is safe to copy other
+        # chunks based on the fourth character of the chunk_type being lower
+        # case, and only copy specific upper case chunks if we know they will
+        # be safe, since we're modifying critical data.
+        # For the moment, though, we will ignore that.
+
+    @property
+    def crc(self):
+        """Provide the CRC of the given chunk."""
+        binascii.crc32(self.chunk_type + self.data)
+
+    @property
+    def critical(self):
+        """Determine if this is a critical PNG chunk."""
+        return self.chunk_type in ['IHDR', 'PLTE', 'IDAT', 'IEND']
+
+
+def process_image_data(image_data):
+    """Process provided PNG data.
+    :param image_data: The raw PNG image data.
+    """
+    png_header = b'\x89PNG\r\n\x1A\n'
+
+    # Make sure we're working on a PNG
+    if not image_data.startswith(png_header):
+        raise NotAPNGError('This program only works with PNGs.')
+
+    image = {
+        'header': png_header,
+        'chunks': [],
+    }
+
+    return image
+
+
+def main():
+    """Be steganographic as requested by the user."""
+    if len(sys.argv) != 2:
+        sys.stderr.write('Usage: {} <path to png image>')
+        sys.exit(1)
+    with open(sys.argv[1], 'rb') as image_handle:
+        data = image_handle.read()
+    img = process_image_data(data)
+    print(img)
+
+
+if __name__ == '__main__':
+    main()
