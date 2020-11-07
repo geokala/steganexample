@@ -20,14 +20,20 @@ class Bitmap:
                 ),
             )
 
-        self.file_size = unpack('>I', data[2:6])[0]
+        self.file_size = unpack('<I', data[2:6])[0]
 
         # Four bytes that depend on the creating application
         self.application_data = data[6:10]
 
-        self.first_image_byte = unpack('b', data[10:11])[0]
+        self.first_image_byte = unpack('<I', data[10:14])[0]
 
-        self.dib_header = data[11:self.first_image_byte]
+        self.dib_header = data[14:self.first_image_byte]
+        # We should check what DIB header type this is, as this will crash and
+        # burn if it is not of type BITMAPINFOHEADER. However, let's keep this
+        # example simpler than that.
+        self.width = unpack('<i', data[18:22])[0]
+        self.height = unpack('<i', data[22:26])[0]
+        self.bits_per_pixel = unpack('<H', data[28:30])[0]
 
         self.image_data = data[self.first_image_byte:]
 
@@ -40,6 +46,9 @@ def main():
         image_data = image_handle.read()
 
     bitmap = Bitmap(image_data)
+    print(bitmap.width)
+    print(bitmap.height)
+    print(bitmap.bits_per_pixel)
 
     expected_pixel_count = 64*64
     print(expected_pixel_count)
