@@ -124,6 +124,36 @@ class Bitmap:
 
         self.pixels = new_pixels
 
+    def retrieve_data(self):
+        """Retrieve data stored in a bitmap."""
+        data = []
+        current_bits = []
+
+        if self.bytes_per_pixel == 4:
+            # Ignore the alpha
+            start_byte = 1
+        else:
+            start_byte = 0
+
+        end_found = False
+        for pixel in self.pixels:
+            for pos in range(start_byte, self.bytes_per_pixel):
+                current_bits.append(pixel[pos] % 2)
+                if len(current_bits) == 8:
+                    current_byte = 0
+                    current_bits.reverse()
+                    for i, bit in enumerate(current_bits):
+                        current_byte += bit * (2 ** i)
+                    data.append(current_byte)
+                    current_bits = []
+                    if current_byte == 0:
+                        end_found = True
+                        break
+            if end_found:
+                break
+
+        return bytes(data)
+
 
 def _add_default_args(subparser):
     """Add the arguments all subparsers need."""
@@ -184,7 +214,8 @@ def main():
         with open(args.bitmap_file_name + '.mod.bmp', 'wb') as image_handle:
             image_handle.write(image.full_data)
     elif args.action == 'retrieve':
-        print('TODO')
+        data = image.retrieve_data()
+        print(data.decode('utf-8'))
 
 
 if __name__ == '__main__':
