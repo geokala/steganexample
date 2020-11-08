@@ -15,23 +15,10 @@ class TooMuchData(Exception):
 
 class Bitmap:
     """Class to load and store a bitmap."""
-    def __init__(self, data, usable_bits_per_color_byte=1):
+    def __init__(self, data):
         """Initialise the stegano-ready bitmap.
         :param data: The bitmap image data.
-        :param usable_bits_per_color_byte: Integer specifying how many bits
-                                           per color byte can be used to
-                                           store information. Setting this
-                                           higher may cause trippy images.
-                                           Setting it to 8+ will use all of
-                                           each image byte and thus corrupt
-                                           the image entirely.
-                                           Setting it less than 1 will not
-                                           allow any information to be stored.
         """
-        # This has been defaulted to 1, as this gives a change of up to 1 on
-        # a value that can range from 0 - 255, so about a 0.4% change.
-        self.usable_bits_per_color_byte = usable_bits_per_color_byte
-
         if data[0:2] != b'BM':
             raise UnsupportedFormat(
                 'Header was expected to start with BM, but started with {}. '
@@ -55,6 +42,11 @@ class Bitmap:
         self.image_data = data[first_image_byte:]
 
     @property
+    def full_data(self):
+        """Return the full data for saving to file."""
+        return self.base_header + self.dib_header + self.image_data
+
+    @property
     def pixel_count(self):
         """Determine the image's pixel count."""
         return self.width * self.height
@@ -64,7 +56,7 @@ class Bitmap:
         """Calculate how many bytes of data can be stored in this image."""
         # We are assuming at least RGB here, and ignoring alpha.
         # Everything will blow up interestingly if bits_per_pixel < 24.
-        return (self.pixel_count * self.usable_bits_per_color_byte)//8
+        return (self.pixel_count * 3)//8
 
     @property
     def pixels(self):
@@ -82,7 +74,9 @@ class Bitmap:
     def store_data(self, data):
         """Store provided utf-8 data."""
         bytes_data = data.encode('utf-8')
-        if len(bytes_data) > self.usable_data_storage:
+        remaining_storage = self.usable_data_storage - len(bytes_data)
+
+        if remaining_storage < 0:
             raise TooMuchData(
                 '{provided} bytes of data were provided, but this image can '
                 'only hold {usable}.'.format(
@@ -90,18 +84,49 @@ class Bitmap:
                     usable=self.usable_data_storage,
                 )
             )
-        
+
+        if remaining_storage == 0:
+            # So that we know when we found all the data when retrieving
+            bytes_data += b'\x00'
+
+        bits = []
+        for byte in bytes_data:
+            this_byte = []
+            for i in range(8):
+                this_byte.append(byte % 2)
+                byte = byte >> 1
+            bits.extend(reversed(this_byte))
+
+        if self.bytes_per_pixel == 4:
+            # Don't mess with the alpha
+            start_byte = 1
+        else:
+            start_byte = 0
+
+        new_pixels = []
+        for pixel in self.pixels:
+            pixel = list(pixel)
+            # We're assuming we have three bytes to use on each pixel.
+            # If bits per pixel < 24 this will result in interesting times.
+            # We reverse it so we can get it in the right order after popping
+            bits_for_this_pixel = list(reversed(bits[:3]))
+            bits = bits[3:]
+
+            # Zero the usable bits then set the lowest bit to the appropriate
+            # value
+            for pos in range(start_byte, self.bytes_per_pixel):
+                pixel[pos] = pixel[pos] >> 1
+                pixel[pos] = pixel[pos] << 1
+                if bits_for_this_pixel:
+                    pixel[pos] += bits_for_this_pixel.pop()
+
+            new_pixels.append(bytes(pixel))
+
+        self.pixels = new_pixels
 
 
 def _add_default_args(subparser):
     """Add the arguments all subparsers need."""
-    subparser.add_argument(
-        '-s', '--storage-bits',
-        help='How many bits in each color byte to use for storage.',
-        type=int,
-        default=1,
-    )
-
     subparser.add_argument(
         'bitmap_file_name',
         help='The name of the bitmap file.',
@@ -137,6 +162,11 @@ def main():
     for subparser in check, store, retrieve:
         _add_default_args(subparser)
 
+    store.add_argument(
+        'data_to_store',
+        help='UTF-8 data to store in provided bitmap.',
+    )
+
     args = parser.parse_args()
 
     if args.action not in ['check', 'store', 'retrieve']:
@@ -145,12 +175,14 @@ def main():
 
     with open(args.bitmap_file_name, 'rb') as image_handle:
         image_data = image_handle.read()
-    image = Bitmap(image_data, args.storage_bits)
+    image = Bitmap(image_data)
 
     if args.action == 'check':
         print(image.usable_data_storage)
     elif args.action == 'store':
-        print(image.pixels)
+        image.store_data(args.data_to_store)
+        with open(args.bitmap_file_name + '.mod.bmp', 'wb') as image_handle:
+            image_handle.write(image.full_data)
     elif args.action == 'retrieve':
         print('TODO')
 
