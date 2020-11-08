@@ -6,3 +6,7 @@ BMP file format details obtained from https://en.wikipedia.org/wiki/BMP_file_for
 
 Note that PNG is only partially implemented as the complexity probably doesn't lend it towards a starting example quite so much as a bitmap does.
 Other formats are of course feasible- anything lossless should be relatively straight-forward, but anything with lossy compression would be... interesting (though maybe not impossible).
+
+Another way of working with PNGs would be to add a custom header containing the data (obfuscated or otherwise).
+Standard image viewing programs wouldn't show the data, but it'd still be visible to any program that supported that header.
+However, this method would be rather more obvious when, e.g. viewing the file with a hex editor, so would depend on the purpose and the desire for deniability.
