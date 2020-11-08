@@ -5,12 +5,15 @@ Rather than parsing images by hand, it would make sense in a non-example program
 
 Run:
 > ./process_bmp check cc.bmp
+
 This will show how many bytes the cc.bmp image can store.
 
 > ./process_bmp store cc.bmp "My test message in utf-8"
+
 This will store the message in the modified file: cc.bmp.mod.bmp
 
 > ./process_bmp retrieve cc.bmp.mod.bmp
+
 This will print the message stored in the given bitmap.
 It'll probably crash if run on an unmodified bitmap.
 
