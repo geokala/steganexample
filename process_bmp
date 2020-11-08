@@ -9,6 +9,10 @@ class UnsupportedFormat(Exception):
     """Raised if we don't see the expected files structure."""
 
 
+class TooMuchData(Exception):
+    """Raised if too much data is passed for the image to store."""
+
+
 class Bitmap:
     """Class to load and store a bitmap."""
     def __init__(self, data, usable_bits_per_color_byte=1):
@@ -46,7 +50,7 @@ class Bitmap:
         # example simpler than that.
         self.width = unpack('<i', data[18:22])[0]
         self.height = unpack('<i', data[22:26])[0]
-        self.bytes_per_pixel = unpack('<H', data[28:30])[0]/8
+        self.bytes_per_pixel = int(unpack('<H', data[28:30])[0]/8)
 
         self.image_data = data[first_image_byte:]
 
@@ -55,11 +59,38 @@ class Bitmap:
         """Determine the image's pixel count."""
         return self.width * self.height
 
-    def calculate_usable_data_storage(self):
-        """Calculate how many bits of data can be stored in this image."""
+    @property
+    def usable_data_storage(self):
+        """Calculate how many bytes of data can be stored in this image."""
         # We are assuming at least RGB here, and ignoring alpha.
         # Everything will blow up interestingly if bits_per_pixel < 24.
-        return self.pixel_count * self.usable_bits_per_color_byte
+        return (self.pixel_count * self.usable_bits_per_color_byte)//8
+
+    @property
+    def pixels(self):
+        """Retrieve a list of the pixels in the image."""
+        return [
+            self.image_data[idx:idx+self.bytes_per_pixel]
+            for idx in range(0, len(self.image_data), self.bytes_per_pixel)
+        ]
+
+    @pixels.setter
+    def pixels(self, pixels):
+        """Update the image data with modified pixels."""
+        self.image_data = b''.join(pixels)
+
+    def store_data(self, data):
+        """Store provided utf-8 data."""
+        bytes_data = data.encode('utf-8')
+        if len(bytes_data) > self.usable_data_storage:
+            raise TooMuchData(
+                '{provided} bytes of data were provided, but this image can '
+                'only hold {usable}.'.format(
+                    provided=len(bytes_data),
+                    usable=self.usable_data_storage,
+                )
+            )
+        
 
 
 def _add_default_args(subparser):
@@ -117,9 +148,9 @@ def main():
     image = Bitmap(image_data, args.storage_bits)
 
     if args.action == 'check':
-        print(image.calculate_usable_data_storage())
+        print(image.usable_data_storage)
     elif args.action == 'store':
-        print('TODO')
+        print(image.pixels)
     elif args.action == 'retrieve':
         print('TODO')
 
